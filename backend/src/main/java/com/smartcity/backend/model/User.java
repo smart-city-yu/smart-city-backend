@@ -29,6 +29,9 @@ public class User {
     @Column(nullable = false)
     private String phoneNumber;
 
+//    @Column(unique = true, nullable = false)
+//    private String nationalId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;

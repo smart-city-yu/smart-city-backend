@@ -82,4 +82,28 @@ public class GlobalExceptionHandler {
                 .body(buildError(HttpStatus.INTERNAL_SERVER_ERROR,
                         "An unexpected error occurred"));
     }
+
+    @ExceptionHandler(PasswordMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handlePasswordMismatch(
+            PasswordMismatchException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)        // 400
+                .body(buildError(HttpStatus.BAD_REQUEST, ex.getMessage()));
+    }
+
+    @ExceptionHandler(SamePasswordException.class)
+    public ResponseEntity<Map<String, Object>> handleSamePassword(
+            SamePasswordException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)        // 400
+                .body(buildError(HttpStatus.BAD_REQUEST, ex.getMessage()));
+    }
+
+    @ExceptionHandler(NationalIdAlreadyExistsException.class)
+    public ResponseEntity<Map<String, Object>> handleNationalIdAlreadyExists(
+            NationalIdAlreadyExistsException ex) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)    // 409
+                .body(buildError(HttpStatus.CONFLICT, ex.getMessage()));
+    }
 }

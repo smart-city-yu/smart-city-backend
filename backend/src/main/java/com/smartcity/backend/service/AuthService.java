@@ -3,10 +3,7 @@ package com.smartcity.backend.service;
 import com.smartcity.backend.dto.AuthResponse;
 import com.smartcity.backend.dto.LoginRequest;
 import com.smartcity.backend.dto.RegisterRequest;
-import com.smartcity.backend.exception.AccountNotVerifiedException;
-import com.smartcity.backend.exception.EmailAlreadyExistsException;
-import com.smartcity.backend.exception.InvalidCredentialsException;
-import com.smartcity.backend.exception.UserNotFoundException;
+import com.smartcity.backend.exception.*;
 import com.smartcity.backend.model.Role;
 import com.smartcity.backend.model.User;
 import com.smartcity.backend.repository.UserRepository;
@@ -33,18 +30,27 @@ public class AuthService {
             );
         }
 
+//        // Check 2 — national ID already exists (NEW)
+//        if (userRepository.existsByNationalId(request.getNationalId())) {
+//            throw new NationalIdAlreadyExistsException(
+//                    "An account with this National ID already exists"
+//            );
+//        }
+
         String hashedPassword = passwordEncoder.encode(request.getPassword());
+
         User user = User.builder()
                 .fullName(request.getFullName())
                 .email(request.getEmail())
                 .password(hashedPassword)
                 .phoneNumber(request.getPhoneNumber())
+//                .nationalId(request.getNationalId())   // ← NEW
                 .role(Role.USER)
-                .enabled(false)
+                .enabled(true)
+                // TODO: set to false when email verification is implemented on real server
                 .build();
 
         User savedUser = userRepository.save(user);
-
         String token = jwtUtil.generateToken(savedUser);
 
         return AuthResponse.builder()
