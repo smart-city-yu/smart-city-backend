@@ -12,6 +12,8 @@ public class ProfileResponse {
 
     private Long userId;
 
+    private String nationalId;
+
     private String fullName;
 
     private String email;
