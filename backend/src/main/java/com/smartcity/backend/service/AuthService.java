@@ -30,12 +30,12 @@ public class AuthService {
             );
         }
 
-//        // Check 2 — national ID already exists (NEW)
-//        if (userRepository.existsByNationalId(request.getNationalId())) {
-//            throw new NationalIdAlreadyExistsException(
-//                    "An account with this National ID already exists"
-//            );
-//        }
+        // Check 2 — national ID already exists (NEW)
+        if (userRepository.existsByNationalId(request.getNationalId())) {
+            throw new NationalIdAlreadyExistsException(
+                    "An account with this National ID already exists"
+            );
+        }
 
         String hashedPassword = passwordEncoder.encode(request.getPassword());
 
@@ -44,7 +44,7 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(hashedPassword)
                 .phoneNumber(request.getPhoneNumber())
-//                .nationalId(request.getNationalId())   // ← NEW
+                .nationalId(request.getNationalId())   // ← NEW
                 .role(Role.USER)
                 .enabled(true)
                 // TODO: set to false when email verification is implemented on real server

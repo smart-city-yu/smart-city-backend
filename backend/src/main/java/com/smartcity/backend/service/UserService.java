@@ -42,7 +42,7 @@ public class UserService {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
-//                .nationalId(user.getNationalId())
+                .nationalId(user.getNationalId())
                 .role(user.getRole())
                 .build();
     }
@@ -64,7 +64,7 @@ public class UserService {
                 .fullName(updatedUser.getFullName())
                 .email(updatedUser.getEmail())
                 .phoneNumber(updatedUser.getPhoneNumber())
-//                .nationalId(user.getNationalId())
+                .nationalId(user.getNationalId())
                 .role(updatedUser.getRole())
                 .build();
     }

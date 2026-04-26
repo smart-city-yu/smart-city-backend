@@ -28,14 +28,14 @@ public class RegisterRequest {
 
     private String phoneNumber;
 
-//    @NotBlank(message = "National ID is required")
-//    @Pattern(
-//            regexp = "^[0-9]{10}$",
-//            message = "National ID must be exactly 10 digits"
-//    )
-//    // Jordanian National ID = exactly 10 digits.
-//    // Example: 9876543210
-//    private String nationalId;
+    @NotBlank(message = "National ID is required")
+    @Pattern(
+            regexp = "^[0-9]{10}$",
+            message = "National ID must be exactly 10 digits"
+    )
+    // Jordanian National ID = exactly 10 digits.
+    // Example: 9876543210
+    private String nationalId;
 
     @NotBlank(message = "Password is required")
     @Size(min = 8, message = "Password must be at least 8 characters")
