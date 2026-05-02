@@ -1,6 +1,6 @@
 package com.smartcity.backend.dto;
 
-import com.smartcity.backend.model.Role;
+import com.smartcity.backend.enums.Role;
 import lombok.*;
 
 @Builder

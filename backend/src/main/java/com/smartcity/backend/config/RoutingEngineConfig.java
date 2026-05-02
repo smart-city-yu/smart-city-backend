@@ -1,7 +1,6 @@
 package com.smartcity.backend.config;
 
 
-//import org.example.RoutingEngine;
 import org.example.RoutingEngine;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

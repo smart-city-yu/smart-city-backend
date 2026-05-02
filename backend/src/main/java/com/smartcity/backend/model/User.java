@@ -1,4 +1,5 @@
 package com.smartcity.backend.model;
+import com.smartcity.backend.enums.Role;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

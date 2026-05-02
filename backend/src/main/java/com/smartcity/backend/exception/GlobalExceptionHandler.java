@@ -106,4 +106,20 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.CONFLICT)    // 409
                 .body(buildError(HttpStatus.CONFLICT, ex.getMessage()));
     }
+
+    @ExceptionHandler(ReportNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleReportNotFound(
+            ReportNotFoundException ex) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)   // 404
+                .body(buildError(HttpStatus.NOT_FOUND, ex.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(
+            IllegalArgumentException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST) // 400
+                .body(buildError(HttpStatus.BAD_REQUEST, ex.getMessage()));
+    }
 }

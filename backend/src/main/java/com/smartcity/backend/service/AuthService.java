@@ -4,7 +4,7 @@ import com.smartcity.backend.dto.AuthResponse;
 import com.smartcity.backend.dto.LoginRequest;
 import com.smartcity.backend.dto.RegisterRequest;
 import com.smartcity.backend.exception.*;
-import com.smartcity.backend.model.Role;
+import com.smartcity.backend.enums.Role;
 import com.smartcity.backend.model.User;
 import com.smartcity.backend.repository.UserRepository;
 import com.smartcity.backend.security.JwtUtil;
