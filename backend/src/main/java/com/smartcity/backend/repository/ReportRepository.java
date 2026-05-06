@@ -10,11 +10,14 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReportRepository extends JpaRepository<Report, String> {
 
     List<Report> findByUserIdOrderByCreatedAtDesc(Long userId);
+
+    long countByUserIdAndCreatedAtAfter(Long userId, LocalDateTime cutoff);
 
     List<Report> findAllByOrderByCreatedAtDesc();
 

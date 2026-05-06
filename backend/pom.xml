@@ -117,9 +117,20 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
+		<dependency>
 			<groupId>com.github.omar-kurde</groupId>
 			<artifactId>RoutingEngainv3</artifactId>
 			<version>1.0.4</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.cloudinary</groupId>
+			<artifactId>cloudinary-http45</artifactId>
+			<version>1.39.0</version>
 		</dependency>
 
 	</dependencies>
@@ -136,6 +147,7 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
+					<jvmArguments>-Xms256m -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200</jvmArguments>
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>

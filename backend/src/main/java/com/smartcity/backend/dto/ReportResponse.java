@@ -9,6 +9,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 @Data
 @Builder
@@ -45,8 +46,8 @@ public class ReportResponse {
     private String validationReason;
     private int revalidationCount;
 
-    // Image URL (stored in Firebase, only the URL lives in DB)
-    private String imageUrl;
+    // Image URLs (stored in Cloudinary, URLs persisted in DB)
+    private List<String> imageUrls;
 
     public static ReportResponse from(Report r) {
         Long hoursRemaining = null;
@@ -74,7 +75,7 @@ public class ReportResponse {
                 .validationScore(r.getValidationScore())
                 .validationReason(r.getValidationReason())
                 .revalidationCount(r.getRevalidationCount())
-                .imageUrl(r.getImageUrl())
+                .imageUrls(r.getImageUrls())
                 .build();
     }
 }

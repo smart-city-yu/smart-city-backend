@@ -122,4 +122,12 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST) // 400
                 .body(buildError(HttpStatus.BAD_REQUEST, ex.getMessage()));
     }
+
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<Map<String, Object>> handleTooManyRequests(
+            TooManyRequestsException ex) {
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS) // 429
+                .body(buildError(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage()));
+    }
 }

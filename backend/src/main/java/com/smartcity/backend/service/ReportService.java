@@ -9,8 +9,11 @@ import com.smartcity.backend.enums.ReportPriority;
 import com.smartcity.backend.enums.ReportStatus;
 import com.smartcity.backend.enums.VoteType;
 import com.smartcity.backend.exception.ReportNotFoundException;
+import com.smartcity.backend.exception.TooManyRequestsException;
 import com.smartcity.backend.model.Report;
+import com.smartcity.backend.model.UserVote;
 import com.smartcity.backend.repository.ReportRepository;
+import com.smartcity.backend.repository.UserVoteRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -18,9 +21,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,8 +38,9 @@ public class ReportService {
     private static final double VOTE_BOOST      = 0.1;
     private static final double VALID_THRESHOLD = 0.6;
 
-    private final ReportRepository reportRepository;
-    private final AiService        aiService;
+    private final ReportRepository   reportRepository;
+    private final UserVoteRepository userVoteRepository;
+    private final AiService          aiService;
 
     // =========================================================================
     // CREATE
@@ -42,9 +49,16 @@ public class ReportService {
     @Transactional
     public ReportResponse createReport(Long userId, ReportCategory category,
                                        String description, double lat, double lon,
-                                       String imageUrl) {
+                                       List<String> imageUrls) {
         if (description == null || description.trim().length() < 20) {
             throw new IllegalArgumentException("Description must be at least 20 characters.");
+        }
+
+        // Enforce: at most 2 reports per user per 24 hours
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        if (reportRepository.countByUserIdAndCreatedAtAfter(userId, cutoff) >= 2) {
+            throw new TooManyRequestsException(
+                    "You can only submit 2 reports every 24 hours. Please try again later.");
         }
 
         Report report = Report.builder()
@@ -57,7 +71,7 @@ public class ReportService {
                 .priority(ReportPriority.LOW)
                 .prioritySetBy("AI")
                 .unassessedAt(LocalDateTime.now())
-                .imageUrl(imageUrl)
+                .imageUrls(imageUrls != null ? imageUrls : new ArrayList<>())
                 .build();
 
         Report saved = reportRepository.save(report);
@@ -91,7 +105,7 @@ public class ReportService {
     // =========================================================================
 
     @Transactional
-    public ReportResponse voteReport(String reportId, VoteType voteType) {
+    public ReportResponse voteReport(Long userId, String reportId, VoteType voteType) {
         Report report = findOrThrow(reportId);
 
         // Fixed votes are meaningless on an unconfirmed report
@@ -108,10 +122,41 @@ public class ReportService {
                     "Cannot vote Still on a " + report.getStatus() + " report.");
         }
 
-        if (voteType == VoteType.Still) {
-            report.setStillVotes(report.getStillVotes() + 1);
+        Optional<UserVote> existingOpt = userVoteRepository.findByUserIdAndReportId(userId, reportId);
+
+        if (existingOpt.isPresent()) {
+            UserVote existing = existingOpt.get();
+
+            // Enforce 24-hour cooldown between vote changes
+            long hoursSince = ChronoUnit.HOURS.between(existing.getVotedAt(), LocalDateTime.now());
+            if (hoursSince < 24) {
+                long hoursLeft = 24 - hoursSince;
+                throw new TooManyRequestsException(
+                        "You can change your vote in " + hoursLeft + " hour(s).");
+            }
+
+            // Same vote type — nothing to change
+            if (existing.getVoteType() == voteType) {
+                return ReportResponse.from(report);
+            }
+
+            // Swap the counts: undo old vote, apply new vote
+            applyVoteDelta(report, existing.getVoteType(), -1);
+            applyVoteDelta(report, voteType, +1);
+
+            existing.setVoteType(voteType);
+            existing.setVotedAt(LocalDateTime.now());
+            userVoteRepository.save(existing);
+
         } else {
-            report.setFixedVotes(report.getFixedVotes() + 1);
+            // First time voting on this report
+            applyVoteDelta(report, voteType, +1);
+            userVoteRepository.save(UserVote.builder()
+                    .userId(userId)
+                    .reportId(reportId)
+                    .voteType(voteType)
+                    .votedAt(LocalDateTime.now())
+                    .build());
         }
 
         // Check if community votes push an UNASSESSED report over the threshold
@@ -127,6 +172,15 @@ public class ReportService {
         }
 
         return ReportResponse.from(reportRepository.save(report));
+    }
+
+    /** Adjusts a vote counter by +1 or -1, clamping to zero. */
+    private void applyVoteDelta(Report report, VoteType type, int delta) {
+        if (type == VoteType.Still) {
+            report.setStillVotes(Math.max(0, report.getStillVotes() + delta));
+        } else {
+            report.setFixedVotes(Math.max(0, report.getFixedVotes() + delta));
+        }
     }
 
     // =========================================================================
@@ -161,21 +215,22 @@ public class ReportService {
     // =========================================================================
 
     @Transactional
-    public ReportResponse updateReportImage(String reportId, Long requestingUserId,
-                                            boolean isAdmin, String newImageUrl) {
+    public ReportResponse updateReportImages(String reportId, Long requestingUserId,
+                                             boolean isAdmin, List<String> newImageUrls) {
         Report report = findOrThrow(reportId);
 
         if (!isAdmin) {
             if (!report.getUserId().equals(requestingUserId)) {
-                throw new IllegalArgumentException("You can only update your own report's image.");
+                throw new IllegalArgumentException("You can only update your own report's images.");
             }
             if (report.getStatus() != ReportStatus.UNASSESSED) {
                 throw new IllegalArgumentException(
-                        "Image can only be updated while the report is UNASSESSED.");
+                        "Images can only be updated while the report is UNASSESSED.");
             }
         }
 
-        report.setImageUrl(newImageUrl);
+        report.getImageUrls().clear();
+        report.getImageUrls().addAll(newImageUrls);
         return ReportResponse.from(reportRepository.save(report));
     }
 
@@ -241,10 +296,13 @@ public class ReportService {
         }
 
         try {
+            String firstImageUrl = report.getImageUrls().isEmpty()
+                    ? null : report.getImageUrls().get(0);
+
             AiAnalysisResult result = aiService.analyzeReport(
                     report.getCategory(),
                     report.getDescription(),
-                    report.getImageUrl(),
+                    firstImageUrl,
                     report.getLat(),
                     report.getLon(),
                     report.getStillVotes()

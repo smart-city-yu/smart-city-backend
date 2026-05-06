@@ -20,6 +20,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final EmailService emailService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -30,7 +31,6 @@ public class AuthService {
             );
         }
 
-        // Check 2 — national ID already exists (NEW)
         if (userRepository.existsByNationalId(request.getNationalId())) {
             throw new NationalIdAlreadyExistsException(
                     "An account with this National ID already exists"
@@ -44,17 +44,16 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(hashedPassword)
                 .phoneNumber(request.getPhoneNumber())
-                .nationalId(request.getNationalId())   // ← NEW
+                .nationalId(request.getNationalId())
                 .role(Role.USER)
-                .enabled(true)
-                // TODO: set to false when email verification is implemented on real server
+                .enabled(false)
                 .build();
 
         User savedUser = userRepository.save(user);
-        String token = jwtUtil.generateToken(savedUser);
+        emailService.sendVerificationEmail(savedUser);
 
         return AuthResponse.builder()
-                .token(token)
+                .token(null)
                 .userId(savedUser.getId())
                 .fullName(savedUser.getFullName())
                 .email(savedUser.getEmail())
