@@ -10,6 +10,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Builder
@@ -89,9 +91,14 @@ public class Report {
     @Builder.Default
     private int revalidationCount = 0;
 
-    // --- Image ---
-    // URL pointing to Firebase Storage (upload handled by Flutter client)
-    private String imageUrl;
+    // --- Images ---
+    // URLs pointing to Cloudinary (uploaded by backend on report creation)
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "report_image_urls",
+            joinColumns = @JoinColumn(name = "report_id"))
+    @Column(name = "image_url", length = 1000)
+    @Builder.Default
+    private List<String> imageUrls = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {
