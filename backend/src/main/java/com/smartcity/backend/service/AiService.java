@@ -142,6 +142,7 @@ public class AiService {
             case manhole, treeInRoad, brokenRoad -> ReportPriority.HIGH;
             case pothole, lamppost               -> ReportPriority.MEDIUM;
             case unpavedStreet, speedBump        -> ReportPriority.LOW;
+            case other                           -> ReportPriority.MEDIUM;
         };
 
         if (hasHighKeyword) {

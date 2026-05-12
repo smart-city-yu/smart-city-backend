@@ -28,8 +28,17 @@ public class Report {
     @Column(nullable = false)
     private Long userId;
 
+    // The text the AI sees. For normal path = subProblem text; for "other" path = user description.
     @Column(nullable = false, length = 2000)
     private String description;
+
+    // The predefined option the user selected (null when category or subProblem is "other").
+    @Column(nullable = true, length = 500)
+    private String subProblem;
+
+    // Staff-only note — never sent to AI. Only visible to staff/admin.
+    @Column(nullable = true, length = 2000)
+    private String note;
 
     @Column(nullable = false)
     private double lat;

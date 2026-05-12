@@ -35,15 +35,17 @@ public class ReportController {
     @PostMapping(value = "/create", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ReportResponse> createReport(
             @AuthenticationPrincipal User currentUser,
-            @RequestParam("category")    ReportCategory category,
-            @RequestParam("description") String description,
-            @RequestParam("lat")         double lat,
-            @RequestParam("lon")         double lon,
-            @RequestParam(value = "images", required = false) List<MultipartFile> images
+            @RequestParam("category")                          ReportCategory category,
+            @RequestParam(value = "subProblem", required = false) String subProblem,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "note",        required = false) String note,
+            @RequestParam("lat")                               double lat,
+            @RequestParam("lon")                               double lon,
+            @RequestParam(value = "images", required = false)  List<MultipartFile> images
     ) {
         List<String> imageUrls = cloudinaryService.uploadImages(images, "reports");
         ReportResponse response = reportService.createReport(
-                currentUser.getId(), category, description, lat, lon, imageUrls
+                currentUser.getId(), category, subProblem, description, note, lat, lon, imageUrls
         );
         return ResponseEntity.status(201).body(response);
     }
