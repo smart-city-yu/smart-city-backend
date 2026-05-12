@@ -22,6 +22,13 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
 
+//    public AuthService(UserRepository userRepository, BCryptPasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailService emailService) {
+//        this.userRepository = userRepository;
+//        this.passwordEncoder = passwordEncoder;
+//        this.jwtUtil = jwtUtil;
+//        this.emailService = emailService;
+//    }
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
 
