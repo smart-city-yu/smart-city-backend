@@ -1,6 +1,7 @@
 package com.smartcity.backend.controller;
 
 import com.smartcity.backend.dto.AdminStatsResponse;
+import com.smartcity.backend.dto.AiAnalysisLogResponse;
 import com.smartcity.backend.dto.ReportResponse;
 import com.smartcity.backend.dto.UpdateReportRequest;
 import com.smartcity.backend.enums.ReportCategory;
@@ -103,6 +104,14 @@ public class ReportController {
         return ResponseEntity.ok(
                 reportService.updateReportImages(id, currentUser.getId(), isAdmin, newUrls)
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /api/report/{id}/ai-history
+    // -------------------------------------------------------------------------
+    @GetMapping("/{id}/ai-history")
+    public ResponseEntity<List<AiAnalysisLogResponse>> getAiHistory(@PathVariable String id) {
+        return ResponseEntity.ok(reportService.getAiHistory(id));
     }
 
     // =========================================================================

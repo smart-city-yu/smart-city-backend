@@ -49,6 +49,45 @@ public class EmailService {
         }
     }
 
+    public void sendPasswordResetEmail(User user, String token) {
+        String resetUrl = baseUrl + "/api/auth/reset-password?token=" + token;
+        String html = buildPasswordResetHtml(user.getFullName(), resetUrl);
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setTo(user.getEmail());
+            helper.setSubject("Reset your SmartCity password");
+            helper.setText(html, true);
+            mailSender.send(message);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send password reset email: " + e.getMessage(), e);
+        }
+    }
+
+    private String buildPasswordResetHtml(String fullName, String resetUrl) {
+        return """
+                <!DOCTYPE html>
+                <html>
+                <body style="font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px;">
+                  <div style="max-width: 520px; margin: auto; background: #ffffff; border-radius: 12px; padding: 40px;">
+                    <h2 style="color: #2e7d32; margin-bottom: 8px;">Reset Your Password</h2>
+                    <p style="color: #333;">Hi %s,</p>
+                    <p style="color: #555;">We received a request to reset your SmartCity password.
+                       Click the button below to set a new password. This link expires in <strong>30 minutes</strong>.</p>
+                    <div style="text-align: center; margin: 32px 0;">
+                      <a href="%s"
+                         style="background: #2e7d32; color: #fff; padding: 14px 32px;
+                                border-radius: 8px; text-decoration: none; font-size: 16px;">
+                        Reset Password
+                      </a>
+                    </div>
+                    <p style="color: #999; font-size: 12px;">If you did not request a password reset, you can safely ignore this email. Your password will not change.</p>
+                  </div>
+                </body>
+                </html>
+                """.formatted(fullName, resetUrl);
+    }
+
     private String buildEmailHtml(String fullName, String verifyUrl) {
         return """
                 <!DOCTYPE html>

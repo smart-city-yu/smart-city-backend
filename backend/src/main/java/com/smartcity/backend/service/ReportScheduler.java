@@ -2,7 +2,10 @@ package com.smartcity.backend.service;
 
 import com.smartcity.backend.enums.ReportStatus;
 import com.smartcity.backend.model.Report;
+import com.smartcity.backend.model.User;
+import com.smartcity.backend.repository.PasswordResetTokenRepository;
 import com.smartcity.backend.repository.ReportRepository;
+import com.smartcity.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,6 +23,8 @@ public class ReportScheduler {
     private static final int WINDOW_HOURS = 48;
 
     private final ReportRepository reportRepository;
+    private final UserRepository userRepository;
+    private final PasswordResetTokenRepository resetTokenRepository;
 
     /**
      * Runs every hour.
@@ -42,7 +47,27 @@ public class ReportScheduler {
         }
 
         reportRepository.saveAll(expired);
+    }
 
-        // TODO: notify each report owner when NotificationService is implemented
+    /**
+     * Runs every hour.
+     * Deletes unverified accounts that are older than 48 hours.
+     * Also cleans up their reset tokens to avoid orphaned rows.
+     */
+    @Scheduled(cron = "0 0 * * * *")
+    @Transactional
+    public void deleteUnverifiedAccounts() {
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(48);
+        List<User> unverified = userRepository.findAllByEnabledFalseAndCreatedAtBefore(cutoff);
+
+        if (unverified.isEmpty()) return;
+
+        log.info("Account cleanup: deleting {} unverified account(s) older than 48h", unverified.size());
+
+        for (User user : unverified) {
+            resetTokenRepository.deleteByUserId(user.getId());
+        }
+
+        userRepository.deleteAll(unverified);
     }
 }
