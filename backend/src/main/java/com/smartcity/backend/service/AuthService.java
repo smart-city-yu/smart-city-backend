@@ -5,13 +5,18 @@ import com.smartcity.backend.dto.LoginRequest;
 import com.smartcity.backend.dto.RegisterRequest;
 import com.smartcity.backend.exception.*;
 import com.smartcity.backend.enums.Role;
+import com.smartcity.backend.model.PasswordResetToken;
 import com.smartcity.backend.model.User;
+import com.smartcity.backend.repository.PasswordResetTokenRepository;
 import com.smartcity.backend.repository.UserRepository;
 import com.smartcity.backend.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +26,14 @@ public class AuthService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
+    private final PasswordResetTokenRepository resetTokenRepository;
+
+//    public AuthService(UserRepository userRepository, BCryptPasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailService emailService) {
+//        this.userRepository = userRepository;
+//        this.passwordEncoder = passwordEncoder;
+//        this.jwtUtil = jwtUtil;
+//        this.emailService = emailService;
+//    }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -87,5 +100,54 @@ public class AuthService {
                 .email(user.getEmail())
                 .role(user.getRole())
                 .build();
+    }
+
+    // -------------------------------------------------------------------------
+    // Forgot Password — always returns generic message (security best practice)
+    // -------------------------------------------------------------------------
+    @Transactional
+    public void forgotPassword(String email) {
+        userRepository.findByEmail(email).ifPresent(user -> {
+            // Don't send reset link to unverified accounts
+            if (!user.isEnabled()) return;
+
+            // Delete any existing reset token for this user
+            resetTokenRepository.deleteByUserId(user.getId());
+
+            String token = UUID.randomUUID().toString();
+            resetTokenRepository.save(PasswordResetToken.builder()
+                    .token(token)
+                    .userId(user.getId())
+                    .expiresAt(LocalDateTime.now().plusMinutes(30))
+                    .used(false)
+                    .build());
+
+            emailService.sendPasswordResetEmail(user, token);
+        });
+        // Always returns void — caller sends same generic response regardless
+    }
+
+    // -------------------------------------------------------------------------
+    // Reset Password — validates token and updates password
+    // -------------------------------------------------------------------------
+    @Transactional
+    public void resetPassword(String token, String newPassword) {
+        PasswordResetToken resetToken = resetTokenRepository.findByToken(token)
+                .orElseThrow(() -> new RuntimeException("INVALID_TOKEN"));
+
+        if (resetToken.isUsed())
+            throw new RuntimeException("USED_TOKEN");
+
+        if (resetToken.getExpiresAt().isBefore(LocalDateTime.now()))
+            throw new RuntimeException("EXPIRED_TOKEN");
+
+        User user = userRepository.findById(resetToken.getUserId())
+                .orElseThrow(() -> new RuntimeException("INVALID_TOKEN"));
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        resetToken.setUsed(true);
+        resetTokenRepository.save(resetToken);
     }
 }

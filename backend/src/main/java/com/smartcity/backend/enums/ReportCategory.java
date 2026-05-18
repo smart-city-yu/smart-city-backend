@@ -7,5 +7,6 @@ public enum ReportCategory {
     unpavedStreet,
     manhole,
     lamppost,
-    speedBump
+    speedBump,
+    other
 }
