@@ -10,7 +10,6 @@ import lombok.*;
 @AllArgsConstructor
 public class AuthResponse {
     private String token;
-
     private Long userId;
     private String fullName;
     private String email;

@@ -2,6 +2,7 @@ package com.smartcity.backend.controller;
 
 import com.smartcity.backend.dto.AdminStatsResponse;
 import com.smartcity.backend.dto.ReportResponse;
+import com.smartcity.backend.dto.ReportSummary;
 import com.smartcity.backend.dto.UpdateReportRequest;
 import com.smartcity.backend.enums.ReportCategory;
 import com.smartcity.backend.enums.ReportStatus;
@@ -50,6 +51,23 @@ public class ReportController {
         return ResponseEntity.status(201).body(response);
     }
 
+
+    // -------------------------------------------------------------------------
+    // GET /api/report/summary
+    // -------------------------------------------------------------------------
+
+    @GetMapping("all/summary")
+    public ResponseEntity<List<ReportSummary>> getAllReportSummary(double northLat, double northLng, double southLat, double southLng, int zoom) {
+        ResponseEntity<List<ReportSummary>> x= ResponseEntity.ok(reportService.getAllReportsSummaryInViewPort(northLat, northLng, southLat, southLng, zoom));
+        System.out.println(x);
+        return x;
+    }
+
+
+    @GetMapping("all/viewport")
+    public ResponseEntity<List<ReportResponse>> getAllReports(double northLat, double northLng, double southLat, double southLng, int zoom) {
+        return null;
+    }
     // -------------------------------------------------------------------------
     // GET /api/report/all
     // -------------------------------------------------------------------------
