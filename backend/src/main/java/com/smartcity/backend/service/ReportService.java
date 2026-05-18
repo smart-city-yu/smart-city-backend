@@ -13,6 +13,7 @@ import com.smartcity.backend.model.ReportH3;
 import com.smartcity.backend.model.UserVote;
 import com.smartcity.backend.repository.AiAnalysisLogRepository;
 import com.smartcity.backend.repository.ReportRepository;
+import com.smartcity.backend.repository.UserRepository;
 import com.smartcity.backend.repository.UserVoteRepository;
 import com.uber.h3core.util.LatLng;
 import jakarta.annotation.PostConstruct;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -42,13 +44,14 @@ public class ReportService {
     private static final double VALID_THRESHOLD = 0.6;
 
 
-    private final ReportRepository   reportRepository;
-    private final UserVoteRepository userVoteRepository;
-    private final H3ReportService h3ReportService;
-
-    private final H3CoreService h3CoreService;
+    private final ReportRepository        reportRepository;
+    private final UserVoteRepository      userVoteRepository;
+    private final H3ReportService         h3ReportService;
+    private final H3CoreService           h3CoreService;
     private final AiAnalysisLogRepository aiLogRepository;
-    private final AiService aiService;
+    private final AiService               aiService;
+    private final UserRepository          userRepository;
+    private final PushNotificationService pushNotificationService;
 
     // =========================================================================
     // CREATE
@@ -105,6 +108,9 @@ public class ReportService {
 
         Report saved = reportRepository.save(report);
         h3ReportService.InsertReportH3(report);
+
+        // Notify nearby users (~1 km bounding box)
+        notifyNearbyUsers(saved, userId);
 
         // Fire AI analysis in background — user already has the response
         triggerAiAnalysis(saved.getReportId());
@@ -226,6 +232,17 @@ public class ReportService {
                 log.info("Report {} hit vote milestone (stillVotes={}, runs={}), triggering re-analysis.",
                         reportId, stillVotes, runs);
                 triggerVoteReanalysis(reportId);
+
+                // Notify report owner about community interest
+                notifyReportOwner(
+                        report.getUserId(),
+                        stillVotes + " people confirmed your report!",
+                        stillVotes + " people say your " +
+                        getCategoryDisplayName(report.getCategory()) +
+                        " is still there. AI is re-analysing with updated data.",
+                        reportId,
+                        "VOTE_MILESTONE"
+                );
             }
         }
 
@@ -248,6 +265,7 @@ public class ReportService {
     @Transactional
     public ReportResponse updateReport(String reportId, UpdateReportRequest req) {
         Report report = findOrThrow(reportId);
+        ReportStatus oldStatus = report.getStatus();
 
         if (req.isResetAiControl()) {
             // Admin hands priority ownership back to AI
@@ -265,7 +283,26 @@ public class ReportService {
             }
         }
 
-        return ReportResponse.from(reportRepository.save(report));
+        Report saved = reportRepository.save(report);
+
+        // Notify owner when admin changes the report status
+        if (req.getStatus() != null && req.getStatus() != oldStatus) {
+            String catName = getCategoryDisplayName(report.getCategory());
+            String title, body;
+            if (req.getStatus() == ReportStatus.RESOLVED) {
+                title = "Your report was resolved! ✅";
+                body  = "Your " + catName + " report has been fixed. Thank you for keeping the city safe!";
+            } else if (req.getStatus() == ReportStatus.REJECTED) {
+                title = "Report update";
+                body  = "Your " + catName + " report was reviewed and rejected by the city team.";
+            } else {
+                title = "Report status updated";
+                body  = "Your " + catName + " report status changed to " + req.getStatus().name() + ".";
+            }
+            notifyReportOwner(report.getUserId(), title, body, reportId, "STATUS_CHANGE");
+        }
+
+        return ReportResponse.from(saved);
     }
 
     // =========================================================================
@@ -425,6 +462,23 @@ public class ReportService {
             log.info("AI applied to report {}: valid={}, confidence={}, priority={}",
                     reportId, result.isValid(), result.getConfidence(), result.getPriority());
 
+            // Notify report owner of AI decision
+            String catName = getCategoryDisplayName(report.getCategory());
+            if (autoRejected) {
+                notifyReportOwner(report.getUserId(),
+                        "Report auto-rejected",
+                        "Your " + catName + " report was rejected — AI confidence was too low. " +
+                        "Please resubmit with a clearer description or photo.",
+                        reportId, "AI_REJECTED");
+            } else if (result.isValid()) {
+                String priority = result.getPriority() != null ? result.getPriority().name() : "MEDIUM";
+                notifyReportOwner(report.getUserId(),
+                        "Report confirmed ✅",
+                        "Your " + catName + " report was confirmed by AI — " +
+                        priority + " priority. City workers will review it soon.",
+                        reportId, "AI_CONFIRMED");
+            }
+
         } catch (Exception e) {
             log.error("AI analysis failed for report {}: {}", reportId, e.getMessage());
         }
@@ -512,5 +566,58 @@ public class ReportService {
                         "Report not found with id: " + reportId));
     }
 
+    // ── Notification helpers ──────────────────────────────────────────────────
 
+    /** Sends a push notification to the owner of a report (if they have an FCM token). */
+    private void notifyReportOwner(Long userId, String title, String body,
+                                   String reportId, String type) {
+        userRepository.findById(userId).ifPresent(user -> {
+            if (user.getFcmToken() != null) {
+                pushNotificationService.sendToUser(
+                        user.getFcmToken(), title, body,
+                        Map.of("reportId", reportId, "type", type));
+            }
+        });
+    }
+
+    /**
+     * Notifies users within ~1 km of a new report.
+     * Uses a bounding-box approximation: 1 km ≈ 0.009° lat, ≈ 0.011° lon at ~31°N.
+     */
+    private void notifyNearbyUsers(Report report, Long reportOwnerUserId) {
+        double latDelta = 0.009;
+        double lonDelta = 0.011;
+        List<com.smartcity.backend.model.User> nearby = userRepository.findNearbyUsersWithToken(
+                report.getLat() - latDelta, report.getLat() + latDelta,
+                report.getLon() - lonDelta, report.getLon() + lonDelta,
+                reportOwnerUserId);
+
+        if (nearby.isEmpty()) return;
+
+        List<String> tokens = nearby.stream()
+                .map(com.smartcity.backend.model.User::getFcmToken)
+                .toList();
+
+        String catName = getCategoryDisplayName(report.getCategory());
+        pushNotificationService.sendToMultiple(
+                tokens,
+                "New issue near you 📍",
+                catName + " reported nearby. Help confirm it by voting!",
+                Map.of("type", "NEARBY_REPORT"));
+    }
+
+    /** Maps a ReportCategory enum value to its human-readable display name. */
+    private String getCategoryDisplayName(ReportCategory category) {
+        if (category == null) return "Road Issue";
+        return switch (category) {
+            case pothole       -> "Pothole";
+            case manhole       -> "Manhole";
+            case lamppost      -> "Lamppost";
+            case brokenRoad    -> "Broken Road";
+            case treeInRoad    -> "Tree in Road";
+            case unpavedStreet -> "Unpaved Street";
+            case speedBump     -> "Speed Bump";
+            case other         -> "Road Issue";
+        };
+    }
 }
