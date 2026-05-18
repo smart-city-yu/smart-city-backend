@@ -7,10 +7,13 @@ import com.smartcity.backend.enums.ReportStatus;
 import com.smartcity.backend.enums.VoteType;
 import com.smartcity.backend.exception.ReportNotFoundException;
 import com.smartcity.backend.exception.TooManyRequestsException;
+import com.smartcity.backend.model.AiAnalysisLog;
 import com.smartcity.backend.model.Report;
 import com.smartcity.backend.model.ReportH3;
 import com.smartcity.backend.model.UserVote;
+import com.smartcity.backend.repository.AiAnalysisLogRepository;
 import com.smartcity.backend.repository.ReportRepository;
+import com.smartcity.backend.repository.UserRepository;
 import com.smartcity.backend.repository.UserVoteRepository;
 import com.uber.h3core.util.LatLng;
 import jakarta.annotation.PostConstruct;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -39,12 +43,15 @@ public class ReportService {
     private static final double VOTE_BOOST      = 0.1;
     private static final double VALID_THRESHOLD = 0.6;
 
-    private final ReportRepository   reportRepository;
-    private final UserVoteRepository userVoteRepository;
-    private final H3ReportService h3ReportService;
 
-    private final H3CoreService h3CoreService;
-    private final AiService aiService;
+    private final ReportRepository        reportRepository;
+    private final UserVoteRepository      userVoteRepository;
+    private final H3ReportService         h3ReportService;
+    private final H3CoreService           h3CoreService;
+    private final AiAnalysisLogRepository aiLogRepository;
+    private final AiService               aiService;
+    private final UserRepository          userRepository;
+    private final PushNotificationService pushNotificationService;
 
     // =========================================================================
     // CREATE
@@ -102,6 +109,9 @@ public class ReportService {
         Report saved = reportRepository.save(report);
         h3ReportService.InsertReportH3(report);
 
+        // Notify nearby users (~1 km bounding box)
+        notifyNearbyUsers(saved, userId);
+
         // Fire AI analysis in background — user already has the response
         triggerAiAnalysis(saved.getReportId());
 
@@ -139,6 +149,11 @@ public class ReportService {
     @Transactional
     public ReportResponse voteReport(Long userId, String reportId, VoteType voteType) {
         Report report = findOrThrow(reportId);
+
+        // Users must not vote on their own reports
+        if (report.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("You cannot vote on your own report.");
+        }
 
         // Fixed votes are meaningless on an unconfirmed report
         if (report.getStatus() == ReportStatus.UNASSESSED && voteType == VoteType.Fixed) {
@@ -191,15 +206,43 @@ public class ReportService {
                     .build());
         }
 
-        // Check if community votes push an UNASSESSED report over the threshold
-        if (report.getStatus() == ReportStatus.UNASSESSED) {
-            double boostedScore = report.getValidationScore()
-                    + (report.getStillVotes() * VOTE_BOOST);
+        // ── Vote-triggered AI logic ──────────────────────────────────────────
+        int  stillVotes = report.getStillVotes();
+        int  runs       = report.getRevalidationCount();
 
+        if (report.getStatus() == ReportStatus.UNASSESSED && runs == 0) {
+            // AI hasn't run yet — votes might push score over threshold
+            double boostedScore = report.getValidationScore()
+                    + (stillVotes * VOTE_BOOST);
             if (boostedScore >= VALID_THRESHOLD) {
-                log.info("Report {} hit vote threshold (stillVotes={}), triggering re-validation",
-                        reportId, report.getStillVotes());
+                log.info("Report {} hit score threshold (stillVotes={}), triggering first AI run.",
+                        reportId, stillVotes);
                 triggerAiAnalysis(reportId);
+            }
+
+        } else if (voteType == VoteType.Still
+                && report.getStatus() == ReportStatus.PENDING) {
+            // Milestone re-analysis: feed updated vote context back to AI
+            // Milestone 1 — 3 still votes (AI has run exactly once)
+            // Milestone 2 — 5 still votes (AI has run exactly twice)
+            boolean milestone1 = (stillVotes >= 3 && runs == 1);
+            boolean milestone2 = (stillVotes >= 5 && runs == 2);
+
+            if (milestone1 || milestone2) {
+                log.info("Report {} hit vote milestone (stillVotes={}, runs={}), triggering re-analysis.",
+                        reportId, stillVotes, runs);
+                triggerVoteReanalysis(reportId);
+
+                // Notify report owner about community interest
+                notifyReportOwner(
+                        report.getUserId(),
+                        stillVotes + " people confirmed your report!",
+                        stillVotes + " people say your " +
+                        getCategoryDisplayName(report.getCategory()) +
+                        " is still there. AI is re-analysing with updated data.",
+                        reportId,
+                        "VOTE_MILESTONE"
+                );
             }
         }
 
@@ -222,6 +265,7 @@ public class ReportService {
     @Transactional
     public ReportResponse updateReport(String reportId, UpdateReportRequest req) {
         Report report = findOrThrow(reportId);
+        ReportStatus oldStatus = report.getStatus();
 
         if (req.isResetAiControl()) {
             // Admin hands priority ownership back to AI
@@ -239,7 +283,26 @@ public class ReportService {
             }
         }
 
-        return ReportResponse.from(reportRepository.save(report));
+        Report saved = reportRepository.save(report);
+
+        // Notify owner when admin changes the report status
+        if (req.getStatus() != null && req.getStatus() != oldStatus) {
+            String catName = getCategoryDisplayName(report.getCategory());
+            String title, body;
+            if (req.getStatus() == ReportStatus.RESOLVED) {
+                title = "Your report was resolved! ✅";
+                body  = "Your " + catName + " report has been fixed. Thank you for keeping the city safe!";
+            } else if (req.getStatus() == ReportStatus.REJECTED) {
+                title = "Report update";
+                body  = "Your " + catName + " report was reviewed and rejected by the city team.";
+            } else {
+                title = "Report status updated";
+                body  = "Your " + catName + " report status changed to " + req.getStatus().name() + ".";
+            }
+            notifyReportOwner(report.getUserId(), title, body, reportId, "STATUS_CHANGE");
+        }
+
+        return ReportResponse.from(saved);
     }
 
     // =========================================================================
@@ -303,6 +366,18 @@ public class ReportService {
     }
 
     // =========================================================================
+    // AI HISTORY
+    // =========================================================================
+
+    public List<AiAnalysisLogResponse> getAiHistory(String reportId) {
+        findOrThrow(reportId); // 404 if report doesn't exist
+        return aiLogRepository.findByReportIdOrderByRanAtDesc(reportId)
+                .stream()
+                .map(AiAnalysisLogResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    // =========================================================================
     // AI INTEGRATION — async trigger
     // =========================================================================
 
@@ -328,24 +403,51 @@ public class ReportService {
         }
 
         try {
-            String firstImageUrl = report.getImageUrls().isEmpty()
-                    ? null : report.getImageUrls().get(0);
+            // isPredefined = true when user picked a dropdown option (subProblem stored),
+            // false when user typed free-text ("other" path).
+            boolean isPredefined = report.getSubProblem() != null
+                    && !report.getSubProblem().isBlank();
 
+            // Pass ALL image URLs — Nemotron analyzes all of them in a single call
             AiAnalysisResult result = aiService.analyzeReport(
                     report.getCategory(),
                     report.getDescription(),
-                    firstImageUrl,
+                    report.getImageUrls(),
                     report.getLat(),
                     report.getLon(),
-                    report.getStillVotes()
+                    report.getStillVotes(),
+                    isPredefined
             );
 
-            // Update AI fields
+            // ── Persist log entry (history) ──────────────────────────────
+            aiLogRepository.save(AiAnalysisLog.builder()
+                    .reportId(reportId)
+                    .ranAt(java.time.LocalDateTime.now())
+                    .valid(result.isValid())
+                    .confidence(result.getConfidence())
+                    .reason(result.getReason())
+                    .priority(result.getPriority())
+                    .trigger("SUBMIT")
+                    .build());
+
+            // ── Update latest result on the Report row ───────────────────
             report.setValidationScore(result.getConfidence());
             report.setValidationReason(result.getReason());
             report.setRevalidationCount(report.getRevalidationCount() + 1);
 
-            if (result.isValid()) {
+            // Confidence < 0.35 → auto-reject regardless of valid flag
+            // (LLM said valid but wasn't sure at all — treat as spam/noise)
+            boolean autoRejected = result.getConfidence() < 0.35;
+
+            if (autoRejected) {
+                report.setStatus(ReportStatus.REJECTED);
+                report.setValidationReason(
+                    "Auto-rejected: AI confidence too low (" +
+                    String.format("%.0f", result.getConfidence() * 100) + "%).");
+                log.info("Report {} auto-rejected — confidence {} below floor.",
+                        reportId, result.getConfidence());
+
+            } else if (result.isValid()) {
                 // Status: AI only moves UNASSESSED → PENDING, never overrides further
                 report.setStatus(ReportStatus.PENDING);
 
@@ -354,14 +456,103 @@ public class ReportService {
                     report.setPriority(result.getPriority());
                 }
             }
-            // If not valid: stays UNASSESSED — scheduler closes it after 48h
+            // valid=false but confidence ≥ 0.35: stays UNASSESSED — scheduler closes after 48h
 
             reportRepository.save(report);
             log.info("AI applied to report {}: valid={}, confidence={}, priority={}",
                     reportId, result.isValid(), result.getConfidence(), result.getPriority());
 
+            // Notify report owner of AI decision
+            String catName = getCategoryDisplayName(report.getCategory());
+            if (autoRejected) {
+                notifyReportOwner(report.getUserId(),
+                        "Report auto-rejected",
+                        "Your " + catName + " report was rejected — AI confidence was too low. " +
+                        "Please resubmit with a clearer description or photo.",
+                        reportId, "AI_REJECTED");
+            } else if (result.isValid()) {
+                String priority = result.getPriority() != null ? result.getPriority().name() : "MEDIUM";
+                notifyReportOwner(report.getUserId(),
+                        "Report confirmed ✅",
+                        "Your " + catName + " report was confirmed by AI — " +
+                        priority + " priority. City workers will review it soon.",
+                        reportId, "AI_CONFIRMED");
+            }
+
         } catch (Exception e) {
             log.error("AI analysis failed for report {}: {}", reportId, e.getMessage());
+        }
+    }
+
+    /**
+     * Re-runs AI analysis on a PENDING report when community votes hit a milestone.
+     *
+     * Differences from triggerAiAnalysis:
+     *   - Works on PENDING reports (not just UNASSESSED)
+     *   - Never changes report status (stays PENDING — city workers already see it)
+     *   - Respects prioritySetBy=ADMIN — skips priority update if admin owns it
+     *   - Updates confidence + reason + revalidationCount so workers see fresh AI context
+     */
+    @Async
+    @Transactional
+    public void triggerVoteReanalysis(String reportId) {
+        Report report = reportRepository.findById(reportId).orElse(null);
+        if (report == null) return;
+
+        if (report.getStatus() != ReportStatus.PENDING) {
+            log.info("Skipping vote re-analysis for report {} — status is {}.",
+                    reportId, report.getStatus());
+            return;
+        }
+
+        try {
+            boolean isPredefined = report.getSubProblem() != null
+                    && !report.getSubProblem().isBlank();
+
+            AiAnalysisResult result = aiService.analyzeReport(
+                    report.getCategory(),
+                    report.getDescription(),
+                    report.getImageUrls(),
+                    report.getLat(),
+                    report.getLon(),
+                    report.getStillVotes(),   // ← updated vote count is the whole point
+                    isPredefined
+            );
+
+            // Always log the re-analysis
+            String trigger = report.getStillVotes() >= 5 ? "VOTE_MILESTONE_5" : "VOTE_MILESTONE_3";
+            aiLogRepository.save(AiAnalysisLog.builder()
+                    .reportId(reportId)
+                    .ranAt(java.time.LocalDateTime.now())
+                    .valid(result.isValid())
+                    .confidence(result.getConfidence())
+                    .reason(result.getReason())
+                    .priority(result.getPriority())
+                    .trigger(trigger)
+                    .build());
+
+            // Always update confidence + reason
+            report.setValidationScore(result.getConfidence());
+            report.setValidationReason(result.getReason());
+            report.setRevalidationCount(report.getRevalidationCount() + 1);
+
+            // Priority: only update if AI still owns it — never override ADMIN
+            if ("AI".equals(report.getPrioritySetBy())) {
+                report.setPriority(result.getPriority());
+                log.info("Vote re-analysis: priority updated to {} for report {}.",
+                        result.getPriority(), reportId);
+            } else {
+                log.info("Vote re-analysis: priority kept as ADMIN-set ({}) for report {}.",
+                        report.getPriority(), reportId);
+            }
+
+            // Status intentionally NOT changed — report stays PENDING
+            reportRepository.save(report);
+            log.info("Vote re-analysis done for report {}: confidence={}, priority={}",
+                    reportId, result.getConfidence(), result.getPriority());
+
+        } catch (Exception e) {
+            log.error("Vote re-analysis failed for report {}: {}", reportId, e.getMessage());
         }
     }
 
@@ -375,5 +566,58 @@ public class ReportService {
                         "Report not found with id: " + reportId));
     }
 
+    // ── Notification helpers ──────────────────────────────────────────────────
 
+    /** Sends a push notification to the owner of a report (if they have an FCM token). */
+    private void notifyReportOwner(Long userId, String title, String body,
+                                   String reportId, String type) {
+        userRepository.findById(userId).ifPresent(user -> {
+            if (user.getFcmToken() != null) {
+                pushNotificationService.sendToUser(
+                        user.getFcmToken(), title, body,
+                        Map.of("reportId", reportId, "type", type));
+            }
+        });
+    }
+
+    /**
+     * Notifies users within ~1 km of a new report.
+     * Uses a bounding-box approximation: 1 km ≈ 0.009° lat, ≈ 0.011° lon at ~31°N.
+     */
+    private void notifyNearbyUsers(Report report, Long reportOwnerUserId) {
+        double latDelta = 0.009;
+        double lonDelta = 0.011;
+        List<com.smartcity.backend.model.User> nearby = userRepository.findNearbyUsersWithToken(
+                report.getLat() - latDelta, report.getLat() + latDelta,
+                report.getLon() - lonDelta, report.getLon() + lonDelta,
+                reportOwnerUserId);
+
+        if (nearby.isEmpty()) return;
+
+        List<String> tokens = nearby.stream()
+                .map(com.smartcity.backend.model.User::getFcmToken)
+                .toList();
+
+        String catName = getCategoryDisplayName(report.getCategory());
+        pushNotificationService.sendToMultiple(
+                tokens,
+                "New issue near you 📍",
+                catName + " reported nearby. Help confirm it by voting!",
+                Map.of("type", "NEARBY_REPORT"));
+    }
+
+    /** Maps a ReportCategory enum value to its human-readable display name. */
+    private String getCategoryDisplayName(ReportCategory category) {
+        if (category == null) return "Road Issue";
+        return switch (category) {
+            case pothole       -> "Pothole";
+            case manhole       -> "Manhole";
+            case lamppost      -> "Lamppost";
+            case brokenRoad    -> "Broken Road";
+            case treeInRoad    -> "Tree in Road";
+            case unpavedStreet -> "Unpaved Street";
+            case speedBump     -> "Speed Bump";
+            case other         -> "Road Issue";
+        };
+    }
 }

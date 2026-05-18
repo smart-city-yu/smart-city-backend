@@ -44,6 +44,15 @@ public class User {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    // ── Push notification fields ─────────────────────────────────────────────
+    /** Firebase Cloud Messaging device token — updated by the app on each launch. */
+    @Column(length = 512)
+    private String fcmToken;
+
+    /** Last location sent by the app — used for "new report near you" notifications. */
+    private Double lastKnownLat;
+    private Double lastKnownLon;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
