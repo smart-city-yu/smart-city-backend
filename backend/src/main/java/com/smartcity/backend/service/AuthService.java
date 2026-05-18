@@ -46,11 +46,11 @@ public class AuthService {
                 .phoneNumber(request.getPhoneNumber())
                 .nationalId(request.getNationalId())
                 .role(Role.USER)
-                .enabled(false)
+                .enabled(true)
                 .build();
 
         User savedUser = userRepository.save(user);
-        emailService.sendVerificationEmail(savedUser);
+//        emailService.sendVerificationEmail(savedUser);
 
         return AuthResponse.builder()
                 .token(null)

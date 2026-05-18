@@ -1,9 +1,6 @@
 package com.smartcity.backend.service;
 
-import com.smartcity.backend.dto.AdminStatsResponse;
-import com.smartcity.backend.dto.AiAnalysisResult;
-import com.smartcity.backend.dto.ReportResponse;
-import com.smartcity.backend.dto.UpdateReportRequest;
+import com.smartcity.backend.dto.*;
 import com.smartcity.backend.enums.ReportCategory;
 import com.smartcity.backend.enums.ReportPriority;
 import com.smartcity.backend.enums.ReportStatus;
@@ -14,6 +11,7 @@ import com.smartcity.backend.model.Report;
 import com.smartcity.backend.model.UserVote;
 import com.smartcity.backend.repository.ReportRepository;
 import com.smartcity.backend.repository.UserVoteRepository;
+import com.uber.h3core.util.LatLng;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -40,7 +38,9 @@ public class ReportService {
 
     private final ReportRepository   reportRepository;
     private final UserVoteRepository userVoteRepository;
-    private final AiService          aiService;
+    private final H3ReportService h3ReportService;
+    private final H3CoreService h3CoreService;
+    private final AiService aiService;
 
     // =========================================================================
     // CREATE
@@ -75,6 +75,7 @@ public class ReportService {
                 .build();
 
         Report saved = reportRepository.save(report);
+        h3ReportService.InsertReportH3(report);
 
         // Fire AI analysis in background — user already has the response
         triggerAiAnalysis(saved.getReportId());
@@ -85,6 +86,17 @@ public class ReportService {
     // =========================================================================
     // READ
     // =========================================================================
+    public List<ReportSummary> getAllReportsSummaryInViewPort(double northLat, double northLng, double southLat, double southLng, int zoom) {
+        List<ReportSummary> result = new ArrayList<>();
+        List<Long> cells = h3CoreService.getCellsInViewport(northLat, northLng, southLat, southLng, zoom);
+        for (Long cell : cells) {
+            Long count = h3ReportService.CountReports(cell);
+            if (count == 0)continue;
+            LatLng latLng = h3CoreService.getCenter(cell);
+            result.add(new ReportSummary(latLng, count));
+        }
+        return result;
+    }
 
     public List<ReportResponse> getAllReports() {
         return reportRepository.findAllByOrderByCreatedAtDesc()

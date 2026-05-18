@@ -1,8 +1,9 @@
 package com.smartcity.backend.service;
 
+import com.uber.h3core.H3Core;
 import org.example.Graph.Element.Node;
 import org.example.Graph.Element.PlaceCategory;
-import org.example.Graph.Element.Point;
+
 import org.example.PlacesService.H3.H3PlaceWrapper;
 import org.example.RoutingEngine;
 import org.example.ServiceRequest.MapMatchingResult;
