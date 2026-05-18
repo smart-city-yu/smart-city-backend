@@ -52,10 +52,29 @@ public class ReportService {
 
     @Transactional
     public ReportResponse createReport(Long userId, ReportCategory category,
-                                       String description, double lat, double lon,
+                                       String subProblem, String description, String note,
+                                       double lat, double lon,
                                        List<String> imageUrls) {
-        if (description == null || description.trim().length() < 20) {
-            throw new IllegalArgumentException("Description must be at least 20 characters.");
+
+        // Resolve what the AI will see as the description.
+        // Normal path : subProblem is a specific option text  → use it.
+        // "Other" path: subProblem is null / "other"          → use user's typed description.
+        String aiDescription;
+        String storedSubProblem;
+
+        boolean isOtherPath = subProblem == null
+                || subProblem.trim().isEmpty()
+                || subProblem.trim().equalsIgnoreCase("other");
+
+        if (!isOtherPath) {
+            aiDescription   = subProblem.trim();
+            storedSubProblem = subProblem.trim();
+        } else if (description != null && !description.trim().isEmpty()) {
+            aiDescription   = description.trim();
+            storedSubProblem = null;
+        } else {
+            throw new IllegalArgumentException(
+                    "Please select an issue option or provide a description.");
         }
 
         // Enforce: at most 2 reports per user per 24 hours
@@ -68,7 +87,9 @@ public class ReportService {
         Report report = Report.builder()
                 .userId(userId)
                 .category(category)
-                .description(description.trim())
+                .description(aiDescription)
+                .subProblem(storedSubProblem)
+                .note(note != null && !note.trim().isEmpty() ? note.trim() : null)
                 .lat(lat)
                 .lon(lon)
                 .status(ReportStatus.UNASSESSED)

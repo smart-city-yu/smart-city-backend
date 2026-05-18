@@ -18,6 +18,8 @@ public class ReportResponse {
     private String reportId;
     private Long userId;
     private String description;
+    private String subProblem;
+    private String note;
     private double lat;
     private double lon;
     private ReportCategory category;
@@ -60,6 +62,8 @@ public class ReportResponse {
                 .reportId(r.getReportId())
                 .userId(r.getUserId())
                 .description(r.getDescription())
+                .subProblem(r.getSubProblem())
+                .note(r.getNote())
                 .lat(r.getLat())
                 .lon(r.getLon())
                 .category(r.getCategory())
