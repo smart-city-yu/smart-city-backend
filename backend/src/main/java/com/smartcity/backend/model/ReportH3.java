@@ -2,11 +2,8 @@ package com.smartcity.backend.model;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
-@Builder
 @Entity
 @Table(
         name = "report_h3",
@@ -14,6 +11,10 @@ import lombok.Setter;
                 @Index(name = "idx_h3_token", columnList = "h3Token")
         }
 )
+
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ReportH3 {
 
     @Id

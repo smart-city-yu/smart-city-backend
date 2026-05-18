@@ -59,7 +59,9 @@ public class ReportController {
 
     @GetMapping("all/summary")
     public ResponseEntity<List<ReportSummary>> getAllReportSummary(double northLat, double northLng, double southLat, double southLng, int zoom) {
-        return ResponseEntity.ok(reportService.getAllReportsSummaryInViewPort(northLat, northLng, southLat, southLng, zoom));
+        ResponseEntity<List<ReportSummary>> x= ResponseEntity.ok(reportService.getAllReportsSummaryInViewPort(northLat, northLng, southLat, southLng, zoom));
+        System.out.println(x);
+        return x;
     }
 
 

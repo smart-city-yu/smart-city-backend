@@ -42,13 +42,12 @@ public class H3CoreService {
     }
 
     private int zoomToResolution(int zoom) {
-        if (zoom <= 3) return 1;
-        if (zoom <= 5) return 3;
-        if (zoom <= 7) return 5;
-        if (zoom <= 9) return 7;
-        if (zoom <= 11) return 9;
-        if (zoom <= 13) return 11;
-        return 13;
+        if (zoom <=4) return 1;   // continent view
+        if (zoom <= 5) return 2;   // country
+        if (zoom <= 7) return 3;   // region
+        if (zoom <= 9) return 4;  // city
+        if (zoom < 12) return 6;  // district
+        return 7;
     }
 
     public LatLng getCenter(Long h3Index){

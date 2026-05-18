@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,8 +26,12 @@ public class H3ReportService {
     public Long CountReports(Long h3Token) {
         return reportH3Repository.countByH3Token(h3Token);
     }
+    public Map<Long,Long> countReports(List<Long> tokens) {
+        List<Object[]> result = reportH3Repository.countByH3Tokens(tokens);
+        return result.stream().collect(Collectors.toMap(r-> (Long) r[0] , r-> (Long) r[1]));
+    }
     public void InsertReportH3(Report report ) {
-        for (int i = 6 ; i<15; i++) {
+        for (int i = 1 ; i<=8; i++) {
             Long inx = h3Core.getCell(report.getLat() , report.getLon() , i);
              reportH3Repository.save(ReportH3.builder()
                     .h3Token(inx)
@@ -33,6 +39,9 @@ public class H3ReportService {
                     .build());
         }
     }
+
+
+
 
 
 }
