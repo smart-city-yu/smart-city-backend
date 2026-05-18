@@ -53,10 +53,17 @@ public class AiService {
             String imageDescription = null;
 
             // Step 1 — Image analysis (send ALL images to Nemotron at once)
+            boolean nemotronDetected  = false;
+            String  nemotronCategory  = "other";
+            double  nemotronConfidence = 0.0;
+
             if (imageUrls != null && !imageUrls.isEmpty()) {
                 try {
                     DetectResult detect = callDetect(imageUrls);
-                    imageDescription = detect.imageDescription();
+                    imageDescription   = detect.imageDescription();
+                    nemotronDetected   = detect.detected();
+                    nemotronCategory   = detect.category();
+                    nemotronConfidence = detect.confidence();
                     log.info("Image analysis ({} image(s)) → detected={} category={} confidence={} description='{}'",
                             imageUrls.size(), detect.detected(), detect.category(), detect.confidence(), imageDescription);
                 } catch (Exception e) {
@@ -68,7 +75,8 @@ public class AiService {
             String firstImageUrl = (imageUrls != null && !imageUrls.isEmpty()) ? imageUrls.get(0) : null;
             int imageCount = (imageUrls != null) ? imageUrls.size() : 0;
             AiAnalysisResult llmResult = callAnalyze(
-                    category, description, firstImageUrl, lat, lon, stillVotes, isPredefined, imageDescription, imageCount);
+                    category, description, firstImageUrl, lat, lon, stillVotes, isPredefined,
+                    imageDescription, imageCount, nemotronDetected, nemotronCategory, nemotronConfidence);
 
             log.info("Final result → valid={} confidence={} priority={}",
                     llmResult.isValid(), llmResult.getConfidence(), llmResult.getPriority());
@@ -93,10 +101,14 @@ public class AiService {
                                          int stillVotes,
                                          boolean isPredefined,
                                          String imageDescription,
-                                         int imageCount) throws Exception {
+                                         int imageCount,
+                                         boolean nemotronDetected,
+                                         String nemotronCategory,
+                                         double nemotronConfidence) throws Exception {
 
         String body = objectMapper.writeValueAsString(new AnalyzeRequest(
-                category.name(), description, imageUrl, lat, lon, stillVotes, isPredefined, imageDescription, imageCount
+                category.name(), description, imageUrl, lat, lon, stillVotes, isPredefined,
+                imageDescription, imageCount, nemotronDetected, nemotronCategory, nemotronConfidence
         ));
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -232,7 +244,10 @@ public class AiService {
             int still_votes,
             boolean is_predefined,
             String image_description,
-            int image_count
+            int image_count,
+            boolean nemotron_detected,
+            String nemotron_category,
+            double nemotron_confidence
     ) {}
 
     private record DetectRequest(List<String> image_urls) {}
