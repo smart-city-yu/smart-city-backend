@@ -96,4 +96,29 @@ public class UserService {
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
     }
+
+    // ── FCM / Location ────────────────────────────────────────────────────────
+
+    /**
+     * Stores (or replaces) the Firebase Cloud Messaging token for the
+     * currently authenticated user. Called by the app on every launch.
+     */
+    @Transactional
+    public void updateFcmToken(String token) {
+        User user = getCurrentUser();
+        user.setFcmToken(token != null && !token.isBlank() ? token.trim() : null);
+        userRepository.save(user);
+    }
+
+    /**
+     * Updates the user's last known location (used for "new report near you" notifications).
+     * The app sends this whenever it gets a fresh GPS fix.
+     */
+    @Transactional
+    public void updateLocation(double lat, double lon) {
+        User user = getCurrentUser();
+        user.setLastKnownLat(lat);
+        user.setLastKnownLon(lon);
+        userRepository.save(user);
+    }
 }

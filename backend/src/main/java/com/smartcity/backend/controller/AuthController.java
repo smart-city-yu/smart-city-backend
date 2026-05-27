@@ -83,6 +83,116 @@ public class AuthController {
                 true));
     }
 
+    // ── POST /api/auth/forgot-password ───────────────────────────────────────
+    @PostMapping("/forgot-password")
+    public ResponseEntity<java.util.Map<String, String>> forgotPassword(
+            @RequestBody java.util.Map<String, String> body) {
+        String email = body.get("email");
+        if (email == null || email.isBlank())
+            return ResponseEntity.badRequest()
+                    .body(java.util.Map.of("message", "Email is required."));
+
+        authService.forgotPassword(email.trim().toLowerCase());
+
+        // Always same response — never reveal if email exists
+        return ResponseEntity.ok(java.util.Map.of(
+                "message", "If this email is registered and verified, a reset link has been sent."));
+    }
+
+    // ── GET /api/auth/reset-password?token=xxx — serves the HTML reset form ─
+    @GetMapping(value = "/reset-password", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> showResetForm(@RequestParam String token) {
+        return ResponseEntity.ok(buildResetFormHtml(token));
+    }
+
+    // ── POST /api/auth/reset-password — processes the form submission ────────
+    @PostMapping(value = "/reset-password", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
+                 produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> processResetForm(
+            @RequestParam String token,
+            @RequestParam String password,
+            @RequestParam String confirmPassword) {
+
+        if (!password.equals(confirmPassword))
+            return ResponseEntity.badRequest()
+                    .body(htmlPage("Passwords Don't Match",
+                            "The passwords you entered do not match. Please go back and try again.", false));
+
+        if (password.length() < 8)
+            return ResponseEntity.badRequest()
+                    .body(htmlPage("Password Too Short",
+                            "Password must be at least 8 characters long.", false));
+
+        try {
+            authService.resetPassword(token, password);
+            return ResponseEntity.ok(htmlPage("Password Reset!",
+                    "Your password has been updated successfully. You can now log in to the SmartCity app with your new password.",
+                    true));
+        } catch (RuntimeException e) {
+            return switch (e.getMessage()) {
+                case "EXPIRED_TOKEN" -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(htmlPage("Link Expired",
+                                "This password reset link has expired. Please request a new one from the app.", false));
+                case "USED_TOKEN" -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(htmlPage("Link Already Used",
+                                "This reset link has already been used. Please request a new one if needed.", false));
+                default -> ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(htmlPage("Invalid Link",
+                                "This reset link is invalid. Please request a new one from the app.", false));
+            };
+        }
+    }
+
+    private String buildResetFormHtml(String token) {
+        return """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Reset Password — SmartCity</title>
+                </head>
+                <body style="font-family: Arial, sans-serif; background: #f4f4f4;
+                             display: flex; justify-content: center; align-items: center;
+                             min-height: 100vh; margin: 0;">
+                  <div style="background: #fff; border-radius: 12px; padding: 48px 40px;
+                              max-width: 420px; width: 90%%; box-shadow: 0 2px 12px #0001;">
+                    <div style="font-size: 40px; text-align:center;">🔑</div>
+                    <h2 style="color: #2e7d32; text-align: center; margin: 12px 0 4px;">Reset Password</h2>
+                    <p style="color: #777; text-align: center; font-size: 14px; margin-bottom: 28px;">
+                      Enter your new password below.
+                    </p>
+                    <form method="POST" action="/api/auth/reset-password">
+                      <input type="hidden" name="token" value="%s">
+                      <div style="margin-bottom: 16px;">
+                        <label style="display:block; font-size:13px; color:#444; margin-bottom:6px;">
+                          New Password (min. 8 characters)
+                        </label>
+                        <input type="password" name="password" required minlength="8"
+                               style="width: 100%%; padding: 12px; border: 1.5px solid #ddd;
+                                      border-radius: 8px; font-size: 15px; box-sizing: border-box;"/>
+                      </div>
+                      <div style="margin-bottom: 24px;">
+                        <label style="display:block; font-size:13px; color:#444; margin-bottom:6px;">
+                          Confirm New Password
+                        </label>
+                        <input type="password" name="confirmPassword" required minlength="8"
+                               style="width: 100%%; padding: 12px; border: 1.5px solid #ddd;
+                                      border-radius: 8px; font-size: 15px; box-sizing: border-box;"/>
+                      </div>
+                      <button type="submit"
+                              style="width: 100%%; background: #2e7d32; color: #fff;
+                                     padding: 14px; border: none; border-radius: 8px;
+                                     font-size: 16px; cursor: pointer; font-weight: bold;">
+                        Set New Password
+                      </button>
+                    </form>
+                  </div>
+                </body>
+                </html>
+                """.formatted(token);
+    }
+
     private String htmlPage(String title, String message, boolean success) {
         String color = success ? "#2e7d32" : "#c62828";
         String icon  = success ? "✅" : "❌";

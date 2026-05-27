@@ -1,6 +1,7 @@
 package com.smartcity.backend.model;
 import com.smartcity.backend.enums.Role;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -42,6 +43,15 @@ public class User {
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    // ── Push notification fields ─────────────────────────────────────────────
+    /** Firebase Cloud Messaging device token — updated by the app on each launch. */
+    @Column(length = 512)
+    private String fcmToken;
+
+    /** Last location sent by the app — used for "new report near you" notifications. */
+    private Double lastKnownLat;
+    private Double lastKnownLon;
 
     @PrePersist
     protected void onCreate() {
