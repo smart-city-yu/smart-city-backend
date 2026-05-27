@@ -18,10 +18,9 @@ public interface ReportH3Repository extends JpaRepository<ReportH3, Long> {
     List<Report> findReportsByH3Token(Long h3Token);
     long countByH3Token(Long h3Token);
     @Query("""
-        SELECT r.h3Token, COUNT(r)
+        SELECT r.report
         FROM ReportH3 r
         WHERE r.h3Token IN :tokens
-        GROUP BY r.h3Token
     """)
-    List<Object[]> countByH3Tokens(@Param("tokens") List<Long> tokens);
+    List<Report> getAllReportByH3Tokens(@Param("tokens") List<Long> tokens);
 }

@@ -59,15 +59,17 @@ public class ReportController {
 
     @GetMapping("all/summary")
     public ResponseEntity<List<ReportSummary>> getAllReportSummary(double northLat, double northLng, double southLat, double southLng, int zoom) {
-        ResponseEntity<List<ReportSummary>> x= ResponseEntity.ok(reportService.getAllReportsSummaryInViewPort(northLat, northLng, southLat, southLng, zoom));
-        System.out.println(x);
-        return x;
+        return ResponseEntity.ok(reportService.getAllReportsSummaryInViewPort(northLat, northLng, southLat, southLng, zoom));
     }
 
 
     @GetMapping("all/viewport")
     public ResponseEntity<List<ReportResponse>> getAllReports(double northLat, double northLng, double southLat, double southLng, int zoom) {
-        return null;
+        long x = System.nanoTime();
+
+        List<ReportResponse> temp =  reportService.getAllReportsInViewPort(northLat, northLng, southLat, southLng, zoom);
+        System.out.println((System.nanoTime() - x)/1_000_000_000.0);
+        return ResponseEntity.ok(temp);
     }
     // -------------------------------------------------------------------------
     // GET /api/report/all
