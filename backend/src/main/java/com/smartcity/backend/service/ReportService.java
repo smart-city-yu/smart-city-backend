@@ -1,5 +1,6 @@
 package com.smartcity.backend.service;
 
+import com.smartcity.backend.GeoUtil;
 import com.smartcity.backend.dto.*;
 import com.smartcity.backend.enums.ReportCategory;
 import com.smartcity.backend.enums.ReportPriority;
@@ -7,12 +8,12 @@ import com.smartcity.backend.enums.ReportStatus;
 import com.smartcity.backend.enums.VoteType;
 import com.smartcity.backend.exception.ReportNotFoundException;
 import com.smartcity.backend.exception.TooManyRequestsException;
+import com.smartcity.backend.model.H3TokenAgg;
 import com.smartcity.backend.model.Report;
 import com.smartcity.backend.model.ReportH3;
 import com.smartcity.backend.model.UserVote;
 import com.smartcity.backend.repository.ReportRepository;
 import com.smartcity.backend.repository.UserVoteRepository;
-import com.uber.h3core.util.LatLng;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +21,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.Time;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -92,10 +92,14 @@ public class ReportService {
     // =========================================================================
     public List<ReportSummary> getAllReportsSummaryInViewPort(double northLat, double northLng, double southLat, double southLng, int zoom) {
         List<Long> cells = h3CoreService.getCellsInViewport(northLat, northLng, southLat, southLng, zoom);
-        System.out.println(cells.size());
-        Map<Long,Long> temp = h3ReportService.countReports(cells);
-        return temp.entrySet().stream().map(e-> new ReportSummary(h3CoreService.getCenter(e.getKey()), e.getValue())).toList();
+        List<H3TokenAgg> temp = h3ReportService.getReportAgg(cells);
+        return temp.stream().map(e-> new ReportSummary(GeoUtil.fromXYZToLatLng(e.getX(),e.getY(),e.getZ()), e.getCount())).toList();
     }
+    public List<ReportResponse> getAllReportsInViewPort(double northLat, double northLng, double southLat, double southLng, int zoom) {
+        List<Long> cells = h3CoreService.getCellsInViewport(northLat, northLng, southLat, southLng, zoom);
+        return h3ReportService.getAllReports(cells).stream().map(ReportResponse::from).toList();
+    }
+
 
     public List<ReportResponse> getAllReports() {
         return reportRepository.findAllByOrderByCreatedAtDesc()

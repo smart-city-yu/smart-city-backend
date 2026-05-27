@@ -1,14 +1,13 @@
 package com.smartcity.backend.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 @Entity
 @Table(
         name = "report_h3",
         indexes = {
-                @Index(name = "idx_h3_token", columnList = "h3Token")
+                @Index(name = "idx_h3_token", columnList = "h3token")
         }
 )
 
@@ -28,7 +27,7 @@ public class ReportH3 {
     private Report report;
     @Setter
     @Getter
-    @Column( nullable = false)
+    @Column(name = "h3token" ,  nullable = false)
     private Long h3Token;
 
 }
